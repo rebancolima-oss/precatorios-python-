@@ -4,7 +4,9 @@ import requests
 app = Flask(__name__, template_folder='.')
 
 # Sua chave válida
+# Altere essa linha no seu app.py:
 DATAJUD_API_KEY = "cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw=="
+
 
 # Expandimos a lista para incluir mais tribunais e aumentar a chance de sucesso
 TRIBUNAIS_ALVO = [
