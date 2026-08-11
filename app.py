@@ -19,12 +19,6 @@ TRIBUNAIS_ALVO = [
     "api_publica_tjrj"
 ]
 
-def formatar_processo_cnj(num):
-    # Transforma '00100348720195010011' em '0010034-87.2019.5.01.0011'
-    if len(num) == 20:
-        return f"{num[0:7]}-{num[7:9]}.{num[9:13]}.{num[13:14]}.{num[14:16]}.{num[16:20]}"
-    return num
-
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -43,25 +37,19 @@ def buscar():
             "Content-Type": "application/json"
         }
         
-        # Limpa caracteres especiais para contar os dígitos numéricos
+        # Limpa os caracteres especiais para a contagem
         apenas_numeros = ''.join(filter(str.isdigit, termo_busca))
         
-        # Identifica se é um número de processo (20 dígitos numéricos)
+        # REGRA ATUALIZADA: Envia o número do processo puro utilizando termo exato de busca
         if len(apenas_numeros) == 20:
-            processo_formatado = formatar_processo_cnj(apenas_numeros)
-            
-            # Query exata exigida pelo validador do DataJud
             payload = {
                 "size": 5,
                 "query": {
-                    "bool": {
-                        "must": [
-                            {"match": {"numeroProcesso": processo_formatado}}
-                        ]
+                    "term": {
+                        "numeroProcesso": apenas_numeros
                     }
                 }
             }
-        # Se tiver 11 (CPF) ou 14 (CNPJ)
         elif len(apenas_numeros) == 11 or len(apenas_numeros) == 14:
             payload = {
                 "size": 20,
@@ -76,7 +64,6 @@ def buscar():
                 }
             }
         else:
-            # Busca textual por nome completo ou razão social da empresa
             payload = {
                 "size": 20,
                 "query": {
@@ -104,7 +91,7 @@ def buscar():
                 print(f"Erro ao consultar {tribunal}: {str(inner_error)}")
                 continue
 
-        return jsonify({"hits": {"hits": procesos_consolidados}}), 200
+        return jsonify({"hits": {"hits": processos_consolidados}}), 200
         
     except Exception as e:
         print(f"Erro Geral: {str(e)}")
