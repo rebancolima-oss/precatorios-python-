@@ -24,6 +24,7 @@ def buscar():
         "Content-Type": "application/json"
     }
     
+    # Query estruturada para o Elasticsearch do DataJud
     payload = {
         "query": {
             "match": {
@@ -43,9 +44,18 @@ def buscar():
     
     try:
         response = requests.post(DATAJUD_URL, json=payload, headers=headers)
+        
+        # Se o CNJ retornar erro (ex: Chave expirada ou payload inválido), captura aqui
+        if response.status_code != 200:
+            return jsonify({
+                "erro": f"O CNJ recusou a requisição (Código {response.status_code})",
+                "detalhes": response.text
+            }), response.status_code
+            
         return jsonify(response.json()), response.status_code
+        
     except Exception as e:
-        return jsonify({"erro": str(e)}), 500
+        return jsonify({"erro": f"Erro interno no servidor Python: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
