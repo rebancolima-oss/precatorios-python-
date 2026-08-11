@@ -6,18 +6,24 @@ app = Flask(__name__, template_folder='.')
 # Chave pública oficial extraída da Wiki do CNJ
 DATAJUD_API_KEY = "cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw=="
 
-# Lista completa e mapeada com os tribunais de grande porte (Trabalhistas, Federais e Cíveis)
+# Lista de tribunais alvo do teste
 TRIBUNAIS_ALVO = [
-    "api_publica_trt1",  # TRT 1ª Região - Rio de Janeiro (Dono do processo de teste)
-    "api_publica_trt2",  # TRT 2ª Região - São Paulo
-    "api_publica_trf1",  # Tribunais Federais (Precatórios da União)
+    "api_publica_trt1",
+    "api_publica_trt2",
+    "api_publica_trf1",
     "api_publica_trf2",
     "api_publica_trf3",
     "api_publica_trf4",
     "api_publica_trf5",
-    "api_publica_tjsp",  # Tribunal de Justiça de São Paulo
-    "api_publica_tjrj"   # Tribunal de Justiça do Rio de Janeiro
+    "api_publica_tjsp",
+    "api_publica_tjrj"
 ]
+
+def formatar_processo_cnj(num):
+    # Transforma '00100348720195010011' em '0010034-87.2019.5.01.0011'
+    if len(num) == 20:
+        return f"{num[0:7]}-{num[7:9]}.{num[9:13]}.{num[13:14]}.{num[14:16]}.{num[16:20]}"
+    return num
 
 @app.route('/')
 def index():
@@ -37,20 +43,25 @@ def buscar():
             "Content-Type": "application/json"
         }
         
-        # Limpa os caracteres especiais para validação do tamanho
+        # Limpa caracteres especiais para contar os dígitos numéricos
         apenas_numeros = ''.join(filter(str.isdigit, termo_busca))
         
-        # Identifica se é um número de Processo (20 dígitos numéricos)
+        # Identifica se é um número de processo (20 dígitos numéricos)
         if len(apenas_numeros) == 20:
+            processo_formatado = formatar_processo_cnj(apenas_numeros)
+            
+            # Query exata exigida pelo validador do DataJud
             payload = {
                 "size": 5,
                 "query": {
-                    "match": {
-                        "numeroProcesso": apenas_numeros  # O CNJ exige receber apenas os números puros
+                    "bool": {
+                        "must": [
+                            {"match": {"numeroProcesso": processo_formatado}}
+                        ]
                     }
                 }
             }
-        # Identifica se é um documento válido: CPF (11) ou CNPJ (14)
+        # Se tiver 11 (CPF) ou 14 (CNPJ)
         elif len(apenas_numeros) == 11 or len(apenas_numeros) == 14:
             payload = {
                 "size": 20,
@@ -81,11 +92,10 @@ def buscar():
         
         processos_consolidados = []
         
-        # Faz a varredura indexada por cada tribunal mapeado
         for tribunal in TRIBUNAIS_ALVO:
             url_especifica = f"https://cnj.jus.br{tribunal}/_search"
             try:
-                response = requests.post(url_especifica, json=payload, headers=headers, timeout=4)
+                response = requests.post(url_especifica, json=payload, headers=headers, timeout=5)
                 if response.status_code == 200:
                     dados_retornados = response.json()
                     hits = dados_retornados.get("hits", {}).get("hits", [])
@@ -94,7 +104,7 @@ def buscar():
                 print(f"Erro ao consultar {tribunal}: {str(inner_error)}")
                 continue
 
-        return jsonify({"hits": {"hits": processos_consolidados}}), 200
+        return jsonify({"hits": {"hits": procesos_consolidados}}), 200
         
     except Exception as e:
         print(f"Erro Geral: {str(e)}")
