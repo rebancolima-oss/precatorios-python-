@@ -6,8 +6,18 @@ app = Flask(__name__, template_folder='.')
 # Chave pública oficial extraída da Wiki do CNJ
 DATAJUD_API_KEY = "cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw=="
 
-# Endpoint unificado global do DataJud (Varre todos os tribunais do país de uma só vez)
-DATAJUD_URL_GLOBAL = "https://cnj.jus.br"
+# Lista completa e mapeada com os tribunais de grande porte (Trabalhistas, Federais e Cíveis)
+TRIBUNAIS_ALVO = [
+    "api_publica_trt1",  # TRT 1ª Região - Rio de Janeiro (Dono do processo de teste)
+    "api_publica_trt2",  # TRT 2ª Região - São Paulo
+    "api_publica_trf1",  # Tribunais Federais (Precatórios da União)
+    "api_publica_trf2",
+    "api_publica_trf3",
+    "api_publica_trf4",
+    "api_publica_trf5",
+    "api_publica_tjsp",  # Tribunal de Justiça de São Paulo
+    "api_publica_tjrj"   # Tribunal de Justiça do Rio de Janeiro
+]
 
 @app.route('/')
 def index():
@@ -27,23 +37,23 @@ def buscar():
             "Content-Type": "application/json"
         }
         
-        # Remove caracteres especiais para analisar a estrutura
+        # Limpa os caracteres especiais para validação do tamanho
         apenas_numeros = ''.join(filter(str.isdigit, termo_busca))
         
-        # Se tiver 20 dígitos numéricos, é um Processo (Padrão CNJ)
+        # Identifica se é um número de Processo (20 dígitos numéricos)
         if len(apenas_numeros) == 20:
             payload = {
-                "size": 10,
+                "size": 5,
                 "query": {
                     "match": {
                         "numeroProcesso": apenas_numeros  # O CNJ exige receber apenas os números puros
                     }
                 }
             }
-        # Se tiver 11 (CPF) ou 14 (CNPJ)
+        # Identifica se é um documento válido: CPF (11) ou CNPJ (14)
         elif len(apenas_numeros) == 11 or len(apenas_numeros) == 14:
             payload = {
-                "size": 30,
+                "size": 20,
                 "query": {
                     "bool": {
                         "should": [
@@ -57,7 +67,7 @@ def buscar():
         else:
             # Busca textual por nome completo ou razão social da empresa
             payload = {
-                "size": 30,
+                "size": 20,
                 "query": {
                     "bool": {
                         "should": [
@@ -69,17 +79,25 @@ def buscar():
                 }
             }
         
-        # Dispara uma única requisição para o cluster centralizado
-        response = requests.post(DATAJUD_URL_GLOBAL, json=payload, headers=headers, timeout=10)
+        processos_consolidados = []
         
-        if response.status_code == 200:
-            return jsonify(response.json()), 200
-        else:
-            print(f"Erro no servidor central do CNJ: Status {response.status_code} - {response.text}")
-            return jsonify({"hits": {"hits": []}}), 200
-            
+        # Faz a varredura indexada por cada tribunal mapeado
+        for tribunal in TRIBUNAIS_ALVO:
+            url_especifica = f"https://cnj.jus.br{tribunal}/_search"
+            try:
+                response = requests.post(url_especifica, json=payload, headers=headers, timeout=4)
+                if response.status_code == 200:
+                    dados_retornados = response.json()
+                    hits = dados_retornados.get("hits", {}).get("hits", [])
+                    processos_consolidados.extend(hits)
+            except Exception as inner_error:
+                print(f"Erro ao consultar {tribunal}: {str(inner_error)}")
+                continue
+
+        return jsonify({"hits": {"hits": processos_consolidados}}), 200
+        
     except Exception as e:
-        print(f"Erro Geral no Servidor Python: {str(e)}")
+        print(f"Erro Geral: {str(e)}")
         return jsonify({"erro": "Erro temporário no servidor.", "detalhes": str(e)}), 200
 
 if __name__ == '__main__':
