@@ -3,12 +3,10 @@ import requests
 
 app = Flask(__name__, template_folder='.')
 
-# Sua chave válida
-# Altere essa linha no seu app.py:
+# Sua chave pública extraída do print da Wiki do CNJ
 DATAJUD_API_KEY = "cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw=="
 
-
-# Expandimos a lista para incluir mais tribunais e aumentar a chance de sucesso
+# Lista de tribunais expandida para o teste
 TRIBUNAIS_ALVO = [
     "api_publica_trf1",
     "api_publica_trf2",
@@ -37,8 +35,7 @@ def buscar():
             "Content-Type": "application/json"
         }
         
-        # Identifica se o usuário digitou um número de processo padrão CNJ (com traços e pontos)
-        # Exemplo: 1031380-69.2022.8.26.0100
+        # Se contiver pontos e traços, o robô entende que é um número de Processo
         if "-" in termo_busca and "." in termo_busca:
             payload = {
                 "size": 10,
@@ -49,11 +46,10 @@ def buscar():
                 }
             }
         else:
-            # Caso contrário, limpa os números e busca pelo CPF/CNPJ ou Nome Completo
             documento_limpo = ''.join(filter(str.isdigit, termo_busca))
             
             if documento_limpo:
-                # Busca por documento (CPF/CNPJ)
+                # Se conter apenas números, busca por CPF ou CNPJ
                 payload = {
                     "size": 20,
                     "query": {
@@ -67,7 +63,7 @@ def buscar():
                     }
                 }
             else:
-                # Se o usuário digitou texto, busca por NOME da pessoa ou empresa
+                # Se conter letras, busca por Nome Completo da pessoa ou Razão Social
                 payload = {
                     "size": 20,
                     "query": {
@@ -84,7 +80,7 @@ def buscar():
         processos_consolidados = []
         
         for tribunal in TRIBUNAIS_ALVO:
-            url_especifica = f"https://cnj.jus.br{tribunal}/_search"
+            url_especifica = f"https://api-publica.datajud.cnj.jus.br/{tribunal}/_search"
             try:
                 response = requests.post(url_especifica, json=payload, headers=headers, timeout=5)
                 if response.status_code == 200:
@@ -95,11 +91,11 @@ def buscar():
                 print(f"Erro ao consultar {tribunal}: {str(inner_error)}")
                 continue
 
-        return jsonify({"hits": {"hits": processos_consolidados}}), 200
+        return jsonify({"hits": {"hits": procesos_consolidados}}), 200
         
     except Exception as e:
         print(f"Erro Geral: {str(e)}")
-        return jsonify({"erro": "Erro temporário.", "detalhes": str(e)}), 200
+        return jsonify({"erro": "Erro temporário no servidor.", "detalhes": str(e)}), 200
 
 if __name__ == '__main__':
     app.run(debug=True)
