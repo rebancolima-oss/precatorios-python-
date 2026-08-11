@@ -3,10 +3,10 @@ import requests
 
 app = Flask(__name__, template_folder='.')
 
-# Sua chave pública extraída do print da Wiki do CNJ
+# Chave pública oficial extraída da Wiki do CNJ
 DATAJUD_API_KEY = "cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw=="
 
-# Lista de tribunais expandida para o teste
+# Lista de tribunais alvo do teste
 TRIBUNAIS_ALVO = [
     "api_publica_trf1",
     "api_publica_trf2",
@@ -35,52 +35,52 @@ def buscar():
             "Content-Type": "application/json"
         }
         
-        # Se contiver pontos e traços, o robô entende que é um número de Processo
-        if "-" in termo_busca and "." in termo_busca:
+        # Remove todos os caracteres especiais para analisar o tamanho real do número
+        apenas_numeros = ''.join(filter(str.isdigit, termo_busca))
+        
+        # REGRA REFINADA: O número padrão CNJ possui exatamente 20 dígitos numéricos
+        if len(apenas_numeros) == 20:
             payload = {
-                "size": 10,
+                "size": 5,
                 "query": {
                     "match": {
-                        "numeroProcesso": termo_busca
+                        "numeroProcesso": apenas_numeros  # O CNJ exige receber APENAS OS NÚMEROS (sem pontos e traços)
+                    }
+                }
+            }
+        elif apenas_numeros and (len(apenas_numeros) == 11 or len(apenas_numeros) == 14):
+            # Busca estruturada por CPF (11 dígitos) ou CNPJ (14 dígitos)
+            payload = {
+                "size": 20,
+                "query": {
+                    "bool": {
+                        "should": [
+                            {"match": {"poloAtivo.partes.pessoa.numeroDocumentoPrincipal": apenas_numeros}},
+                            {"match": {"poloPassivo.partes.pessoa.numeroDocumentoPrincipal": apenas_numeros}}
+                        ],
+                        "minimum_should_match": 1
                     }
                 }
             }
         else:
-            documento_limpo = ''.join(filter(str.isdigit, termo_busca))
-            
-            if documento_limpo:
-                # Se conter apenas números, busca por CPF ou CNPJ
-                payload = {
-                    "size": 20,
-                    "query": {
-                        "bool": {
-                            "should": [
-                                {"match": {"poloAtivo.partes.pessoa.numeroDocumentoPrincipal": documento_limpo}},
-                                {"match": {"poloPassivo.partes.pessoa.numeroDocumentoPrincipal": documento_limpo}}
-                            ],
-                            "minimum_should_match": 1
-                        }
+            # Se contiver letras, faz a busca pelo Nome da Parte
+            payload = {
+                "size": 20,
+                "query": {
+                    "bool": {
+                        "should": [
+                            {"match_phrase": {"poloAtivo.partes.pessoa.nome": termo_busca}},
+                            {"match_phrase": {"poloPassivo.partes.pessoa.nome": termo_busca}}
+                        ],
+                        "minimum_should_match": 1
                     }
                 }
-            else:
-                # Se conter letras, busca por Nome Completo da pessoa ou Razão Social
-                payload = {
-                    "size": 20,
-                    "query": {
-                        "bool": {
-                            "should": [
-                                {"match_phrase": {"poloAtivo.partes.pessoa.nome": termo_busca}},
-                                {"match_phrase": {"poloPassivo.partes.pessoa.nome": termo_busca}}
-                            ],
-                            "minimum_should_match": 1
-                        }
-                    }
-                }
+            }
         
         processos_consolidados = []
         
         for tribunal in TRIBUNAIS_ALVO:
-            url_especifica = f"https://api-publica.datajud.cnj.jus.br/{tribunal}/_search"
+            url_especifica = f"https://cnj.jus.br{tribunal}/_search"
             try:
                 response = requests.post(url_especifica, json=payload, headers=headers, timeout=5)
                 if response.status_code == 200:
@@ -91,7 +91,7 @@ def buscar():
                 print(f"Erro ao consultar {tribunal}: {str(inner_error)}")
                 continue
 
-        return jsonify({"hits": {"hits": procesos_consolidados}}), 200
+        return jsonify({"hits": {"hits": processos_consolidados}}), 200
         
     except Exception as e:
         print(f"Erro Geral: {str(e)}")
