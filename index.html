@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consulta DataJud - Precatórios</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 700px; margin: 40px auto; padding: 20px; background-color: #f4f6f9; color: #333; }
+        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; color: #0056b3; }
+        .form-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        input[type="text"] { flex: 1; padding: 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 12px 24px; font-size: 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; font-weight: bold; }
+        button:hover { background: #0056b3; }
+        .resultado { margin-top: 25px; display: none; }
+        .card { background: #fff; padding: 15px; border-left: 5px solid #28a745; margin-bottom: 15px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee; }
+        .card p { margin: 6px 0; }
+        .status { font-weight: bold; color: #666; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Consulta de Precatórios (DataJud)</h2>
+    <p>Digite o CPF ou CNPJ (apenas números) para localizar processos vinculados.</p>
+    
+    <div class="form-group">
+        <input type="text" id="documento" placeholder="Ex: 12345678901">
+        <button onclick="buscarProcessos()">Consultar</button>
+    </div>
+
+    <div id="status-busca" class="status"></div>
+    <div id="resultado-container" class="resultado"></div>
+</div>
+
+<script>
+    async function buscarProcessos() {
+        const inputDoc = document.getElementById('documento').value;
+        const statusDiv = document.getElementById('status-busca');
+        const container = document.getElementById('resultado-container');
+        
+        if (!inputDoc.replace(/\D/g, '')) {
+            alert("Por favor, insira um CPF ou CNPJ válido.");
+            return;
+        }
+
+        statusDiv.innerText = "Buscando dados com segurança no servidor...";
+        container.style.display = "none";
+        container.innerHTML = "";
+
+        try {
+            // Envia a requisição para o nosso próprio back-end em Python, matando o erro de CORS
+            const response = await fetch('/buscar', {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ documento: inputDoc })
+            });
+
+            const data = await response.json();
+            const hits = data.hits?.hits || [];
+
+            statusDiv.innerText = "";
+            container.style.display = "block";
+
+            if (hits.length === 0) {
+                container.innerHTML = "<p>Nenhum processo encontrado para este documento.</p>";
+                return;
+            }
+
+            let html = `<h3>Encontrado(s) ${hits.length} processo(s):</h3>`;
+            hits.forEach(item => {
+                const src = item._source;
+                const classeNome = src.classe?.nome || 'Não informada';
+                const ehPrecatorio = classeNome.toLowerCase().includes('precat') || classeNome.toLowerCase().includes('rpv');
+                
+                html += `
+                    <div class="card" style="border-left-color: ${ehPrecatorio ? '#dc3545' : '#28a745'}">
+                        <p><strong>Nº Processo:</strong> ${src.numeroProcesso}</p>
+                        <p><strong>Classe:</strong> ${classeNome} ${ehPrecatorio ? '⚠️ (Possível Precatório/RPV)' : ''}</p>
+                        <p><strong>Tribunal:</strong> ${src.tribunal}</p>
+                        <p><strong>Órgão Julgador:</strong> ${src.orgaoJulgador?.nome || 'Não informado'}</p>
+                        <p><strong>Data de Ajuizamento:</strong> ${src.dataAjuizamento || 'Não informada'}</p>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+
+        } catch (error) {
+            statusDiv.innerText = "";
+            container.style.display = "block";
+            container.innerHTML = `<p style="color: red;"><strong>Erro ao consultar:</strong> Comunicação com o servidor falhou.</p>`;
+        }
+    }
+</script>
+</body>
+</html>
