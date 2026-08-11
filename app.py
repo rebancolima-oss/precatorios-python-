@@ -3,17 +3,18 @@ import requests
 
 app = Flask(__name__, template_folder='.')
 
-# Chave válida fornecida por você
+# Sua chave válida
 DATAJUD_API_KEY = "cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw=="
 
-# Lista de aliases oficiais do DataJud para tribunais com maior volume de precatórios
+# Expandimos a lista para incluir mais tribunais e aumentar a chance de sucesso
 TRIBUNAIS_ALVO = [
     "api_publica_trf1",
     "api_publica_trf2",
     "api_publica_trf3",
     "api_publica_trf4",
     "api_publica_trf5",
-    "api_publica_tjsp"
+    "api_publica_tjsp",
+    "api_publica_tjrj"
 ]
 
 @app.route('/')
@@ -24,57 +25,79 @@ def index():
 def buscar():
     try:
         data = request.get_json() or {}
-        documento = data.get('documento', '').strip()
-        documento_limpo = ''.join(filter(str.isdigit, documento))
+        termo_busca = data.get('documento', '').strip()
         
-        if not documento_limpo:
-            return jsonify({"erro": "Por favor, digite um CPF ou CNPJ válido."}), 400
+        if not termo_busca:
+            return jsonify({"erro": "Por favor, digite um termo para busca."}), 400
             
         headers = {
             "Authorization": f"APIKey {DATAJUD_API_KEY}",
             "Content-Type": "application/json"
         }
         
-        # A sintaxe de busca por CPF/CNPJ EXIGIDA pelo Elasticsearch do CNJ
-        payload = {
-            "size": 20,
-            "query": {
-                "bool": {
-                    "should": [
-                        {"match": {"poloAtivo.partes.pessoa.numeroDocumentoPrincipal": documento_limpo}},
-                        {"match": {"poloPassivo.partes.pessoa.numeroDocumentoPrincipal": documento_limpo}}
-                    ],
-                    "minimum_should_match": 1
+        # Identifica se o usuário digitou um número de processo padrão CNJ (com traços e pontos)
+        # Exemplo: 1031380-69.2022.8.26.0100
+        if "-" in termo_busca and "." in termo_busca:
+            payload = {
+                "size": 10,
+                "query": {
+                    "match": {
+                        "numeroProcesso": termo_busca
+                    }
                 }
             }
-        }
+        else:
+            # Caso contrário, limpa os números e busca pelo CPF/CNPJ ou Nome Completo
+            documento_limpo = ''.join(filter(str.isdigit, termo_busca))
+            
+            if documento_limpo:
+                # Busca por documento (CPF/CNPJ)
+                payload = {
+                    "size": 20,
+                    "query": {
+                        "bool": {
+                            "should": [
+                                {"match": {"poloAtivo.partes.pessoa.numeroDocumentoPrincipal": documento_limpo}},
+                                {"match": {"poloPassivo.partes.pessoa.numeroDocumentoPrincipal": documento_limpo}}
+                            ],
+                            "minimum_should_match": 1
+                        }
+                    }
+                }
+            else:
+                # Se o usuário digitou texto, busca por NOME da pessoa ou empresa
+                payload = {
+                    "size": 20,
+                    "query": {
+                        "bool": {
+                            "should": [
+                                {"match_phrase": {"poloAtivo.partes.pessoa.nome": termo_busca}},
+                                {"match_phrase": {"poloPassivo.partes.pessoa.nome": termo_busca}}
+                            ],
+                            "minimum_should_match": 1
+                        }
+                    }
+                }
         
         processos_consolidados = []
         
         for tribunal in TRIBUNAIS_ALVO:
-            url_especifica = f"https://api-publica.datajud.cnj.jus.br/{tribunal}/_search"
+            url_especifica = f"https://cnj.jus.br{tribunal}/_search"
             try:
-                # Timeout curto para evitar gargalos caso um tribunal esteja instável
-                response = requests.post(url_especifica, json=payload, headers=headers, timeout=4)
-                
+                response = requests.post(url_especifica, json=payload, headers=headers, timeout=5)
                 if response.status_code == 200:
                     dados_retornados = response.json()
                     hits = dados_retornados.get("hits", {}).get("hits", [])
                     processos_consolidados.extend(hits)
-                else:
-                    print(f"Tribunal {tribunal} retornou status {response.status_code}: {response.text}")
-                    
             except Exception as inner_error:
-                print(f"Falha de conexão com {tribunal}: {str(inner_error)}")
+                print(f"Erro ao consultar {tribunal}: {str(inner_error)}")
                 continue
 
-        # Entrega o JSON estruturado exatamente como o index.html espera ler
         return jsonify({"hits": {"hits": processos_consolidados}}), 200
         
     except Exception as e:
-        # Captura qualquer falha local para evitar erro 500 no navegador
-        print(f"Erro Geral Tratado no Servidor: {str(e)}")
-        return jsonify({"erro": "Erro temporário ao processar a resposta dos tribunais.", "detalhes": str(e)}), 200
+        print(f"Erro Geral: {str(e)}")
+        return jsonify({"erro": "Erro temporário.", "detalhes": str(e)}), 200
 
 if __name__ == '__main__':
     app.run(debug=True)
