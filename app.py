@@ -3,8 +3,19 @@ import requests
 
 app = Flask(__name__, template_folder='.')
 
-DATAJUD_URL = "https://cnj.jus.br"
+# Chave fornecida por você
 DATAJUD_API_KEY = "cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw=="
+
+# Lista das siglas dos tribunais com maior volume de precatórios no Brasil
+# Você pode adicionar mais tribunais à lista seguindo o mesmo padrão (ex: 'api_publica_tjrj')
+TRIBUNAIS_ALVO = [
+    "api_publica_trf1",  # DF, MG, GO, TO, MT, BA, PI, MA, AM, PA, AC, RO, RR, AP
+    "api_publica_trf2",  # RJ, ES
+    "api_publica_trf3",  # SP, MS
+    "api_publica_trf4",  # RS, SC, PR
+    "api_publica_trf5",  # PE, CE, AL, SE, RN, PB
+    "api_publica_tjsp",  # Tribunal de Justiça de São Paulo
+]
 
 @app.route('/')
 def index():
@@ -25,10 +36,10 @@ def buscar():
             "Content-Type": "application/json"
         }
         
-        # Estrutura de query estrita exigida pelo Elasticsearch do DataJud CNJ
+        # Payload com a query correta exigida pela sintaxe do CNJ
         payload = {
             "query": {
-                "match_phrase": {
+                "match": {
                     "poloAtivo.partes.pessoa.numeroDocumentoPrincipal": documento_limpo
                 }
             },
@@ -40,24 +51,37 @@ def buscar():
                 "dataAjuizamento", 
                 "orgaoJulgador.nome"
             ],
-            "size": 20
+            "size": 10
         }
         
-        response = requests.post(DATAJUD_URL, json=payload, headers=headers)
+        processos_consolidados = []
         
-        # Captura se o CNJ rejeitar as credenciais ou a requisição
-        if response.status_code != 200:
-            return jsonify({
-                "erro": f"Erro do CNJ (Status {response.status_code})",
-                "detalhes": response.text
-            }), response.status_code
-            
-        return jsonify(response.json()), 200
+        # Varre os tribunais mapeados acumulando os resultados achados
+        for tribunal in TRIBUNAIS_ALVO:
+            url_especifica = f"https://api-publica.datajud.cnj.jus.br/{tribunal}/_search"
+            try:
+                response = requests.post(url_especifica, json=payload, headers=headers, timeout=5)
+                if response.status_code == 200:
+                    dados_retornados = response.json()
+                    hits = dados_retornados.get("hits", {}).get("hits", [])
+                    processos_consolidados.extend(hits)
+            except Exception as inner_error:
+                # Se um tribunal específico falhar temporariamente, o robô pula para o próximo
+                print(f"Falha ao consultar {tribunal}: {str(inner_error)}")
+                continue
+
+        # Formata o retorno simulando a estrutura original esperada pelo seu index.html
+        resposta_final = {
+            "hits": {
+                "hits": procesos_consolidados
+            }
+        }
+        
+        return jsonify(resposta_final), 200
         
     except Exception as e:
-        # Evita o erro 500 genérico e te cospe o erro real no console do Render
-        print(f"Erro Crítico no Python: {str(e)}")
-        return jsonify({"erro": f"Falha interna no servidor: {str(e)}"}), 500
+        print(f"Erro Geral no Servidor Python: {str(e)}")
+        return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
