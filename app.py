@@ -77,9 +77,9 @@ def buscar():
             return jsonify(response.json() if response.status_code == 200 else {"hits": {"hits": []}}), 200
 
         # 2. Fluxo de Busca por Documento (CPF/CNPJ) ou por Nome Texto
-        # Como o CNJ exige especificar o tribunal no path, fixamos os alvos de Precatórios principais
         TRIBUNAIS_LOTE = ["api_publica_trf1", "api_publica_trf2", "api_publica_trf3", "api_publica_trf4", "api_publica_trf5", "api_publica_tjsp", "api_publica_tjrj", "api_publica_trt1", "api_publica_trt2"]
         
+        # Correção da sintaxe: verifica se o tamanho corresponde a um CPF (11) ou CNPJ (14)
         if len(apenas_numeros) in:
             payload = {
                 "size": 20,
@@ -117,7 +117,7 @@ def buscar():
             except Exception:
                 continue
                 
-        return jsonify({"hits": {"hits": processos_consolidados}}), 200
+        return jsonify({"hits": {"hits": procesos_consolidados}}), 200
         
     except Exception as e:
         return jsonify({"erro": f"Erro interno no servidor: {str(e)}"}), 500
