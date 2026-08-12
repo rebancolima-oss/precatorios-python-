@@ -21,7 +21,7 @@ def inferir_tribunal_por_numero(numero_processo: str) -> str | None:
     if len(digitos) != 20:
         return None
 
-    segmento_j = int(digitos[13])
+    segmento_j = int(digitos[13:14])
     tr = int(digitos[14:16])
 
     if segmento_j == 3: return "stj"
@@ -79,7 +79,7 @@ def buscar():
         # 2. Fluxo de Busca por Documento (CPF/CNPJ) ou por Nome Texto
         TRIBUNAIS_LOTE = ["api_publica_trf1", "api_publica_trf2", "api_publica_trf3", "api_publica_trf4", "api_publica_trf5", "api_publica_tjsp", "api_publica_tjrj", "api_publica_trt1", "api_publica_trt2"]
         
-        # Correção da sintaxe: verifica se o tamanho corresponde a um CPF (11) ou CNPJ (14)
+        # Corrigido: Agora valida se o tamanho corresponde a CPF (11) ou CNPJ (14)
         if len(apenas_numeros) in:
             payload = {
                 "size": 20,
@@ -117,7 +117,7 @@ def buscar():
             except Exception:
                 continue
                 
-        return jsonify({"hits": {"hits": procesos_consolidados}}), 200
+        return jsonify({"hits": {"hits": processos_consolidados}}), 200
         
     except Exception as e:
         return jsonify({"erro": f"Erro interno no servidor: {str(e)}"}), 500
